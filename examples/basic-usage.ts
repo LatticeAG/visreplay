@@ -1,35 +1,37 @@
-import { LexReplay } from '../src/recorder';
-import * as path from 'path';
+import { VisReplay } from '../src';
+import { resolve } from 'node:path';
 
-// A simple mock agent class
-class MyAgent {
+class DeploymentAgent {
   async run(task: string): Promise<string> {
-    console.log(`[Agent] Received task: ${task}`);
-    // Simulate some work
-    await new Promise(r => setTimeout(r, 1000));
+    console.log(`[agent] received task: ${task}`);
     return `Completed: ${task}`;
   }
 }
 
-async function main() {
-  const recorder = new LexReplay({ sessionName: 'my-session', agentType: 'custom' });
-  
-  const myAgentClient = new MyAgent();
-  const agent = recorder.wrap(myAgentClient);
+async function main(): Promise<void> {
+  const recorder = new VisReplay({
+    sessionName: 'deploy-staging',
+    agentType: 'custom',
+  });
 
-  console.log('Running wrapped agent...');
+  const agent = recorder.wrap(new DeploymentAgent());
   const result = await agent.run('Deploy to staging');
-  
-  // You can also manually add agent-specific events
-  recorder.recordReasoning('I decided to deploy directly because tests passed.');
-  recorder.recordToolCall('execute_deployment', { env: 'staging' });
-  recorder.recordToolResult({ success: true, url: 'https://staging.example.com' });
 
+  // Add information the generic method proxy cannot infer.
+  recorder.recordReasoning('Tests passed, so staging deployment can proceed.');
+  recorder.recordToolCall('deploy', { environment: 'staging' });
+  recorder.recordToolResult({ deploymentId: 'dep_123', status: 'complete' });
+
+  const sessionPath = resolve(process.cwd(), 'deploy-staging.vrs');
+  await recorder.save(sessionPath);
+
+  const debug = recorder.exportDebug();
   console.log(`Agent returned: ${result}`);
-
-  const filePath = path.join(__dirname, 'session.json');
-  await recorder.save(filePath);
-  console.log(`Session saved to ${filePath}`);
+  console.log(`Session saved to ${sessionPath}`);
+  console.log(`Recorded ${debug.summary.eventCount} events`);
 }
 
-main().catch(console.error);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

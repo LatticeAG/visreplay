@@ -1,103 +1,77 @@
-# LexReplay — Session Recorder and Debugger for AI Agents
+# VisReplay
 
-> OSS SDK (MIT). TypeScript. Scaffold the full project.
+> LatticeAG's local session recorder and debugger for AI agents.
 
 ## Identity
 
-- **Name:** LexReplay
-- **Tagline:** Record, replay, and debug agent sessions
-- **Repo:** https://github.com/LatticeAG/lexreplay
+- **Package:** `@latticeag/visreplay`
+- **CLI:** `visreplay`
 - **License:** MIT
-- **Framework:** TypeScript (Node.js npm package)
+- **Runtime:** Node.js 20+
+- **Primary API:** `VisReplay`
 
-## Architecture
+VisReplay records an agent's method calls and explicit debugging events into a
+portable local session file. It can replay those recorded events and export a
+structured debug report. v1 never makes network requests.
 
-Two parts: a recorder SDK and a CLI replay tool, in a single npm package.
+## Source of truth
 
-### Recorder SDK
+[`BUILD-SPEC.md`](./BUILD-SPEC.md) is the locked v1 implementation contract.
+[`SPEC.md`](./SPEC.md) and [`SPEC-DeepDebug.md`](./SPEC-DeepDebug.md) describe
+future product directions. Do not represent a future feature as working v1
+functionality.
 
-A class that wraps any agent client and captures every decision:
+## v1 scope
 
-```typescript
-import { LexReplay } from "@latticeag/lexreplay";
+- Record sync and async method calls through `recorder.wrap(agent)`.
+- Record manual reasoning, tool-call, and tool-result events.
+- Redact common secret-like keys before events are exposed or persisted.
+- Save and load one versioned JSON session document atomically.
+- Replay a local file interactively or automatically.
+- Export a `visreplay/debug/1.0` JSON report.
 
-const recorder = new LexReplay({ sessionName: "my-session" });
-const agent = recorder.wrap(myAgentClient);
-const result = await agent.run("Deploy to staging");
-await recorder.save("session.json");
-```
+Hosted storage, uploads, MCP, Cloudflare Workers, forks, reruns, UI, and
+framework-specific adapters are not included in v1.
 
-**Captures per turn:**
-- User input
-- Model reasoning (the raw completion / streamed chunks)
-- Tool calls made (name, arguments, timing)
-- Tool results returned
-- Final output
-- Latency per step
-
-### Session File Format
-
-JSON with a structured event log:
-
-```json
-{
-  "sessionName": "my-session",
-  "startedAt": "...",
-  "agentType": "openai",
-  "events": [
-    { "type": "input", "timestamp": "...", "content": "...", "index": 0 },
-    { "type": "reasoning", "timestamp": "...", "content": "...", "index": 1 },
-    { "type": "tool_call", "timestamp": "...", "name": "search", "arguments": {...}, "index": 2 },
-    { "type": "tool_result", "timestamp": "...", "content": "...", "index": 3 },
-    { "type": "output", "timestamp": "...", "content": "...", "index": 4 }
-  ]
-}
-```
-
-### CLI Player
+## Module map
 
 ```
-lattice replay session.json       # Interactive step-through
-lattice replay session.json --auto  # Play through automatically
-lattice upload session.json        # Upload to SaaS (future)
+src/
+├── types.ts     # Shared v1 schemas, event types, and safe value helpers
+├── session.ts   # Validation, snapshots, atomic persistence, debug export
+├── recorder.ts  # VisReplay API, redaction, and proxy instrumentation
+├── player.ts    # Read-only cursor navigation and terminal rendering
+├── cli.ts       # visreplay replay and export commands
+└── index.ts     # Public SDK exports
 ```
 
-## File Structure
+Each source module has a co-located Vitest test file. Keep the test surface
+aligned with the public behavior rather than testing implementation details.
 
-```
-lexreplay/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── index.ts              # Public API exports
-│   ├── recorder.ts           # LexReplay class + wrap logic
-│   ├── session.ts            # Session data structures + serialization
-│   ├── types.ts              # TypeScript types (SessionEvent, etc.)
-│   ├── player.ts             # CLI replay logic
-│   └── cli.ts                # CLI entry point (commander)
-├── tests/
-│   └── recorder.test.ts
-├── examples/
-│   └── basic-usage.ts
-└── README.md
+## Typical use
+
+```ts
+import { VisReplay } from '@latticeag/visreplay';
+
+const recorder = new VisReplay({ sessionName: 'deploy-staging' });
+const agent = recorder.wrap(myAgent);
+await agent.run('Deploy to staging');
+await recorder.save('sessions/deploy-staging.vrs');
 ```
 
-## Key Design Decisions
+```bash
+visreplay replay sessions/deploy-staging.vrs --auto
+visreplay export sessions/deploy-staging.vrs --output debug.json
+```
 
-1. **Wrap pattern** — `recorder.wrap(agent)` returns a proxied agent that records all activity. Works with OpenAI SDK, any agent that returns promises.
-2. **Event-sourced format** — session files are append-only event logs. Simple, debuggable, human-readable.
-3. **Zero-code-change** — the wrap pattern means you don't modify your agent code. Just wrap the client.
-4. **CLI via commander** — `lattice replay`, `lattice upload` subcommands.
-5. **TypeScript** — type-safe, npm ecosystem, natural for SDKs.
+## Quality gate
 
-## Build Order
+```bash
+npm ci
+npm run check
+npm run build
+node dist/cli.js --help
+```
 
-1. `package.json` + `tsconfig.json` with dependencies (commander, typescript, @types/node)
-2. `src/types.ts` — all type definitions
-3. `src/session.ts` — session data model + file I/O
-4. `src/recorder.ts` — LexReplay class with wrap proxy
-5. `src/player.ts` — replay logic
-6. `src/cli.ts` — wire up commander
-7. `src/index.ts` — public exports
-8. `tests/` — basic tests
-9. `examples/` — usage example
+CI runs `npm ci` and `npm run check` on Node 20. Keep the product name
+VisReplay and LatticeAG branding in user-facing output.

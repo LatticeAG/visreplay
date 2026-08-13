@@ -1,24 +1,42 @@
 {
-  "name": "@latticeag/lexreplay",
+  "name": "@latticeag/visreplay",
   "version": "1.0.0",
-  "description": "Record, replay, and debug agent sessions",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "Record, replay, and debug AI agent sessions",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "bin": {
-    "lattice": "./dist/cli.js"
+    "visreplay": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
-    "test": "node --test dist/tests/recorder.test.js"
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run"
   },
-  "author": "",
+  "author": "LatticeAG",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "commander": "^11.0.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "vitest": "^3.2.7"
   }
 }
