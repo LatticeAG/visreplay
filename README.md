@@ -1,5 +1,7 @@
 # VisReplay
 
+**The open, local-first agent observability + collaboration stack: record, replay, diff, and inspect agent behavior - then plan and ship with humans in the same workspace.**
+
 **VisReplay** is a local session recorder and debugger for AI agents, by
 LatticeAG. Wrap an agent object or WebSocket connection, save a portable
 session file, replay its recorded events, compare runs, and export a structured
@@ -245,6 +247,12 @@ decision ledger, and file-only vendor interop exporters. It does not include
 hosted storage, SaaS uploads, dashboard sharing, automatic network
 synchronization, agent or tool reruns, session forking, streaming-token
 capture, or framework-specific instrumentation.
+
+## How this compares
+
+Armature reconstructs agent sessions server-side from MCP tool calls. VisReplay records at the source, locally, into portable session files - replay, compare, export - no network, you keep the data.
+
+**Everything the new YC agent-observability startups are building - open-sourced, self-hosted, MIT.**
 
 ## Development
 
