@@ -1,6 +1,6 @@
 {
   "name": "@latticeag/visreplay",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Record, replay, and debug AI agent sessions",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,7 @@
     }
   },
   "bin": {
-    "visreplay": "./dist/cli.js"
+    "visreplay": "dist/cli.js"
   },
   "scripts": {
     "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
