@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { Player, renderExport, VisReplay } from '../src';
+// Published consumers import from '@latticeag/visreplay'.
 
 class ReleaseAgent {
   public async run(environment: string): Promise<{ deploymentId: string; status: string }> {
@@ -25,9 +26,16 @@ async function main(): Promise<void> {
   const agent = recorder.wrap(new ReleaseAgent());
 
   recorder.recordReasoning('The staging checks are green; start the release.');
+  recorder.recordDecision({
+    believed: { tests: 'green' },
+    assumed: { stagingSharesProdCredentials: false },
+    ignored: { canary: 'not required for staging' },
+    summary: 'Proceed with staging release'
+  });
   recorder.recordToolCall('deploy', { environment: 'staging', apiKey: 'example-secret-is-redacted' });
   const result = await agent.run('staging');
   recorder.recordToolResult(result);
+  recorder.end();
 
   await mkdir(outputDirectory, { recursive: true });
   await recorder.save(sessionPath);

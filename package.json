@@ -1,12 +1,13 @@
 {
   "name": "@latticeag/visreplay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Record, replay, and debug AI agent sessions",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
@@ -15,19 +16,36 @@
     "visreplay": "./dist/cli.js"
   },
   "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run"
   },
   "author": "LatticeAG",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LatticeAG/visreplay.git"
+  },
+  "homepage": "https://github.com/LatticeAG/visreplay",
+  "bugs": {
+    "url": "https://github.com/LatticeAG/visreplay/issues"
+  },
+  "keywords": [
+    "agent",
+    "session-replay",
+    "debugging",
+    "observability",
+    "langchain-adjacent"
+  ],
+  "sideEffects": false,
   "engines": {
     "node": ">=20"
   },
   "files": [
-    "dist/*.js",
-    "dist/*.d.ts",
+    "dist",
     "README.md",
     "LICENSE"
   ],

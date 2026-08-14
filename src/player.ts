@@ -51,6 +51,10 @@ export interface PlayerOptions {
   redactKeys?: readonly string[];
   /** Text and property-name patterns redacted while loading or restoring data. */
   redactPatterns?: readonly RedactionPattern[];
+  /** Override the default 64 MiB session file size limit when loading. */
+  maxFileBytes?: number;
+  /** Override the default 500_000 event limit when loading. */
+  maxEvents?: number;
 }
 
 const DEFAULT_AUTO_DELAY_MS = 0;
@@ -69,6 +73,8 @@ export class Player {
   private readonly autoDelayMs: number;
   private readonly redactKeys: readonly string[];
   private readonly redactPatterns: readonly RedactionPattern[];
+  private readonly maxFileBytes?: number;
+  private readonly maxEvents?: number;
 
   public constructor(options: PlayerOptions = {}) {
     this.write = options.write ?? ((line) => console.log(line));
@@ -79,12 +85,19 @@ export class Player {
     // was supplied; callers can always pass patterns explicitly.
     const defaultPatterns = options.redactKeys === undefined ? DEFAULT_REDACT_PATTERNS : [];
     this.redactPatterns = [...(options.redactPatterns ?? defaultPatterns)];
+    this.maxFileBytes = options.maxFileBytes;
+    this.maxEvents = options.maxEvents;
   }
 
   /** Load a session file and reset the replay cursor before its first event. */
   public async load(filePath: string): Promise<SessionData> {
     this.assertSessionReplacementAllowed();
-    const sessionData = await Session.load(filePath, this.redactKeys, this.redactPatterns);
+    const sessionData = await Session.load(filePath, {
+      redactKeys: this.redactKeys,
+      redactPatterns: this.redactPatterns,
+      maxFileBytes: this.maxFileBytes,
+      maxEvents: this.maxEvents
+    });
     this.setSession(sessionData);
     this.write(`Loaded session: ${sessionData.sessionName} (${sessionData.events.length} events)`);
     return sessionData;

@@ -209,6 +209,49 @@ describe('Session', () => {
     expect(session.getEvents()[0].content).toBe(0);
   });
 
+  it('extracts decision records into debug export without changing session schema', async () => {
+    const session = new Session('decision-export', 'test-agent', 'ses_decision');
+    session.addEvent({ type: 'input', content: 'deploy' });
+    session.addEvent({
+      type: 'reasoning',
+      content: 'go',
+      metadata: {
+        visreplay: {
+          schema: 'visreplay/decision/1.0',
+          kind: 'decision',
+          believed: { tests: 'green' }
+        }
+      }
+    });
+
+    const debugExport = session.exportDebug();
+    expect(debugExport.summary.decisionCount).toBe(1);
+    expect(debugExport.decisions[0].decision.believed).toEqual({ tests: 'green' });
+    expect(debugExport.decisions[0].index).toBe(1);
+    expect(session.getData().$schema).toBe('visreplay/session/1.0');
+
+    const directory = await createTemporaryDirectory();
+    const filePath = join(directory, 'decision.vrs');
+    await session.save(filePath);
+    const loaded = await Session.load(filePath);
+    expect(loaded.$schema).toBe('visreplay/session/1.0');
+    expect(Session.fromData(loaded).exportDebug().summary.decisionCount).toBe(1);
+  });
+
+  it('does not count malformed visreplay metadata as decisions', () => {
+    const session = new Session('malformed-decision', 'test-agent', 'ses_malformed');
+    session.addEvent({
+      type: 'reasoning',
+      content: 'notes',
+      metadata: { visreplay: { kind: 'decision' } }
+    });
+
+    const debugExport = session.exportDebug();
+    expect(debugExport.summary.decisionCount).toBe(0);
+    expect(debugExport.decisions).toEqual([]);
+    expect(debugExport.events).toHaveLength(1);
+  });
+
   it('constructs a usable independent session from validated data', () => {
     const original = new Session('source', 'test', 'ses_source');
     original.addEvent({ type: 'input', content: 'source-event' });
@@ -218,6 +261,46 @@ describe('Session', () => {
 
     expect(original.getEvents()).toHaveLength(1);
     expect(restored.getEvents()).toHaveLength(2);
+  });
+
+  it('sets endedAt to an ISO UTC timestamp on the first end() call', () => {
+    const session = new Session('ended-once', 'test', 'ses_end');
+    expect(session.getData().endedAt).toBeUndefined();
+
+    const snapshot = session.end();
+    expect(snapshot.endedAt).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/));
+    expect(new Date(snapshot.endedAt as string).toISOString()).toBe(snapshot.endedAt);
+    expect(session.getData().endedAt).toBe(snapshot.endedAt);
+  });
+
+  it('leaves the original endedAt unchanged on a second end() call', () => {
+    const session = new Session('ended-twice', 'test', 'ses_end_twice');
+    const first = session.end();
+    const second = session.end();
+
+    expect(second.endedAt).toBe(first.endedAt);
+  });
+
+  it('round-trips endedAt through save and load', async () => {
+    const directory = await createTemporaryDirectory();
+    const filePath = join(directory, 'ended.vrs');
+    const session = new Session('ended-persist', 'test', 'ses_end_persist');
+    session.addEvent({ type: 'input', content: 'before-end' });
+    const ended = session.end();
+    await session.save(filePath);
+
+    const loaded = await Session.load(filePath);
+    expect(loaded.endedAt).toBe(ended.endedAt);
+  });
+
+  it('still appends events after end() without clearing endedAt', () => {
+    const session = new Session('ended-then-log', 'test', 'ses_end_log');
+    const ended = session.end();
+    session.addEvent({ type: 'output', content: 'after-end' });
+
+    expect(session.getData().endedAt).toBe(ended.endedAt);
+    expect(session.getEvents()).toHaveLength(1);
+    expect(session.getEvents()[0].content).toBe('after-end');
   });
 });
 

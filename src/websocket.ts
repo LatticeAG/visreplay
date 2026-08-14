@@ -43,6 +43,7 @@ export interface WebSocketRecording<T extends object> {
 /** Minimal sink implemented by VisReplay and useful for custom integrations. */
 export interface WebSocketEventSink {
   log(event: NewSessionEvent): unknown;
+  onCaptureError?(error: unknown, event: NewSessionEvent): void;
 }
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 1024 * 1024;
@@ -74,9 +75,12 @@ export function attachWebSocket<T extends object>(
   const report = (event: NewSessionEvent): void => {
     try {
       sink.log(event);
-    } catch {
-      // Instrumentation is intentionally passive: no socket event or send
-      // operation should fail because its observation could not be recorded.
+    } catch (error) {
+      try {
+        sink.onCaptureError?.(error, event);
+      } catch {
+        // Callback failures stay instrumentation-only.
+      }
     }
   };
 

@@ -296,6 +296,36 @@ describe('Player', () => {
     expect(() => player.setSession({ sessionName: 'invalid' } as SessionData)).toThrow(TypeError);
     expect(() => new Player({ autoDelayMs: -1 })).toThrow('Playback delay must be a non-negative finite number');
   });
+
+  it('compares equal sessions and reports a changed content field', () => {
+    const baseline = new Player({ write: () => undefined });
+    const candidate = new Player({ write: () => undefined });
+    baseline.setSession(createSessionData());
+    candidate.setSession(createSessionData());
+    expect(baseline.compareWith(candidate).equal).toBe(true);
+
+    const changed = createSessionData();
+    changed.events[1].content = 'different';
+    candidate.setSession(changed);
+    const comparison = baseline.compareWith(candidate.getSession());
+    expect(comparison.equal).toBe(false);
+    expect(comparison.events[1]).toMatchObject({
+      kind: 'changed',
+      changes: [{ field: 'content', baseline: 'complete', candidate: 'different' }]
+    });
+  });
+
+  it('honours maxFileBytes when loading a session file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'visreplay-player-limit-'));
+    temporaryDirectories.push(directory);
+    const filePath = join(directory, 'session.vrs');
+    const session = new Session('limited', 'test');
+    session.addEvent({ type: 'input', content: 'too-big-for-tiny-limit' });
+    await session.save(filePath);
+
+    const player = new Player({ write: () => undefined, maxFileBytes: 8 });
+    await expect(player.load(filePath)).rejects.toThrow('exceeds the 8-byte limit');
+  });
 });
 
 function createSessionData(): SessionData {

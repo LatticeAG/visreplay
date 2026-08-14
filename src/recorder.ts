@@ -1,9 +1,13 @@
 import {
   compileRedactionConfig,
   CompiledRedactionConfig,
+  DECISION_SCHEMA,
+  DecisionInput,
+  DecisionRecord,
   DEFAULT_REDACT_KEYS,
   DEFAULT_REDACT_PATTERNS,
   DebugExport,
+  isRecord,
   LexReplayOptions,
   NewSessionEvent,
   RedactionPattern,
@@ -28,6 +32,7 @@ export class VisReplay {
   private readonly redactKeys: readonly string[];
   private readonly redactPatterns: readonly RedactionPattern[];
   private readonly redaction: CompiledRedactionConfig;
+  private readonly captureErrorHandler?: (error: unknown, event: NewSessionEvent) => void;
 
   public constructor(options: VisReplayOptions = {}) {
     this.redactKeys = normalizeRedactionKeys(options.redactKeys);
@@ -36,6 +41,7 @@ export class VisReplay {
       options.redactKeys === undefined
     );
     this.redaction = compileRedactionConfig(this.redactKeys, this.redactPatterns);
+    this.captureErrorHandler = options.onCaptureError;
     this.session = new Session(
       options.sessionName ?? 'unnamed-session',
       options.agentType ?? 'unknown',
@@ -138,6 +144,68 @@ export class VisReplay {
     return this.log({ type: 'tool_result', result });
   }
 
+  /**
+   * Records why an agent acted as a `reasoning` event with
+   * `metadata.visreplay` decision data. Session `$schema` stays 1.0.
+   */
+  public recordDecision(input: DecisionInput): SessionEvent {
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+      throw new Error('Decision input must be an object');
+    }
+    if (!Object.prototype.hasOwnProperty.call(input, 'believed')) {
+      throw new Error('Decision believed is required');
+    }
+    if (input.confidence !== undefined
+      && (typeof input.confidence !== 'number'
+        || !Number.isFinite(input.confidence)
+        || input.confidence < 0
+        || input.confidence > 1)) {
+      throw new Error('Decision confidence must be a finite number between 0 and 1');
+    }
+    if (input.relatedEventIndex !== undefined) {
+      const relatedEventIndex = input.relatedEventIndex;
+      const eventCount = this.getEvents().length;
+      if (!Number.isInteger(relatedEventIndex) || relatedEventIndex < 0 || relatedEventIndex > eventCount - 1) {
+        throw new Error(`relatedEventIndex ${relatedEventIndex} is outside the session bounds`);
+      }
+    }
+    if (input.metadata !== undefined && !isRecord(input.metadata)) {
+      throw new Error('Decision metadata must be an object');
+    }
+    if (input.metadata !== undefined && Object.prototype.hasOwnProperty.call(input.metadata, 'visreplay')) {
+      throw new Error('metadata.visreplay is reserved for VisReplay');
+    }
+    if (input.summary !== undefined && typeof input.summary !== 'string') {
+      throw new Error('Decision summary must be a string');
+    }
+
+    const decisionRecord: DecisionRecord = {
+      schema: DECISION_SCHEMA,
+      kind: 'decision',
+      believed: toJsonSafe(input.believed, this.redaction),
+      ...(input.assumed === undefined ? {} : { assumed: toJsonSafe(input.assumed, this.redaction) }),
+      ...(input.overweighted === undefined ? {} : { overweighted: toJsonSafe(input.overweighted, this.redaction) }),
+      ...(input.ignored === undefined ? {} : { ignored: toJsonSafe(input.ignored, this.redaction) }),
+      ...(input.alternatives === undefined ? {} : { alternatives: toJsonSafe(input.alternatives, this.redaction) }),
+      ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
+      ...(input.relatedEventIndex === undefined ? {} : { relatedEventIndex: input.relatedEventIndex }),
+      ...(input.summary === undefined ? {} : { summary: input.summary })
+    };
+
+    const callerMetadata = input.metadata === undefined
+      ? {}
+      : toJsonSafe(input.metadata, this.redaction) as Record<string, unknown>;
+
+    return this.log({
+      type: 'reasoning',
+      content: decisionContent(input.summary, decisionRecord.believed),
+      metadata: {
+        ...callerMetadata,
+        visreplay: decisionRecord
+      }
+    });
+  }
+
   /** Returns defensive event snapshots in their persisted order. */
   public getEvents(): SessionEvent[] {
     return this.session.getEvents();
@@ -153,6 +221,14 @@ export class VisReplay {
     await this.session.save(filePath);
   }
 
+  /**
+   * Marks the logical end of a run once. Later `log` calls still append.
+   * `endedAt` stays the first end time. `save()` does not call this.
+   */
+  public end(): SessionData {
+    return this.session.end();
+  }
+
   /** Creates the stable JSON-safe debug report for this session. */
   public exportDebug(): DebugExport {
     return this.session.exportDebug();
@@ -161,14 +237,22 @@ export class VisReplay {
   /** Loads a saved session into a usable recorder without adding any events. */
   public static async load(
     filePath: string,
-    options: Pick<VisReplayOptions, 'redactKeys' | 'redactPatterns'> = {}
+    options: Pick<VisReplayOptions, 'redactKeys' | 'redactPatterns'> & {
+      maxFileBytes?: number;
+      maxEvents?: number;
+    } = {}
   ): Promise<VisReplay> {
     const redactKeys = normalizeRedactionKeys(options.redactKeys);
     const redactPatterns = normalizeRedactionPatterns(
       options.redactPatterns,
       options.redactKeys === undefined
     );
-    const data = await Session.load(filePath, redactKeys, redactPatterns);
+    const data = await Session.load(filePath, {
+      redactKeys,
+      redactPatterns,
+      maxFileBytes: options.maxFileBytes,
+      maxEvents: options.maxEvents
+    });
     const recorder = new VisReplay({
       sessionId: data.sessionId,
       sessionName: data.sessionName,
@@ -178,6 +262,21 @@ export class VisReplay {
     });
     recorder.session = Session.fromData(data, redactKeys, redactPatterns);
     return recorder;
+  }
+
+  /**
+   * Forward a recording failure from WebSocket observation. A throwing
+   * callback is swallowed so socket behavior stays unchanged.
+   */
+  public onCaptureError(error: unknown, event: NewSessionEvent): void {
+    if (this.captureErrorHandler === undefined) {
+      return;
+    }
+    try {
+      this.captureErrorHandler(error, event);
+    } catch {
+      // Callback failures stay instrumentation-only.
+    }
   }
 
   private redactEvent(event: NewSessionEvent): NewSessionEvent {
@@ -201,8 +300,8 @@ export class VisReplay {
   private captureSafely(event: NewSessionEvent): void {
     try {
       this.log(event);
-    } catch {
-      // A malformed observation must not alter the wrapped agent's behavior.
+    } catch (error) {
+      this.onCaptureError(error, event);
     }
   }
 }
@@ -308,4 +407,19 @@ function errorToMessage(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function decisionContent(summary: string | undefined, believed: unknown): string {
+  if (typeof summary === 'string') {
+    return summary;
+  }
+  try {
+    const preview = JSON.stringify(believed);
+    if (typeof preview === 'string' && preview.length > 0 && preview !== 'null') {
+      return preview.length > 160 ? `${preview.slice(0, 157)}...` : preview;
+    }
+  } catch {
+    // Fall through to the generic marker.
+  }
+  return 'decision';
 }

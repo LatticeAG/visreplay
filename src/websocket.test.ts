@@ -105,6 +105,38 @@ describe('WebSocket recording', () => {
       }
     ]);
   });
+
+  it('does not attach the first EventEmitter error listener', () => {
+    const source = new EventEmitterSocket();
+    const recorder = new VisReplay();
+    recorder.recordWebSocket(source, { name: 'quiet' });
+
+    expect(source.listenerCount('error')).toBe(0);
+    source.emit('error', new Error('must stay unhandled by instrumentation'));
+    expect(recorder.getEvents()).toEqual([]);
+  });
+
+  it('forwards WebSocket capture failures to onCaptureError without changing send', () => {
+    const captured: Array<{ message: string; type: string }> = [];
+    const recorder = new VisReplay({
+      onCaptureError(error, event) {
+        captured.push({
+          message: error instanceof Error ? error.message : String(error),
+          type: event.type
+        });
+      }
+    });
+    const source = new EventEmitterSocket();
+    const socket = recorder.wrapWebSocket(source, { name: 'hooked' });
+    const session = (recorder as unknown as { session: { addEvent: (event: unknown) => unknown } }).session;
+    session.addEvent = () => {
+      throw new Error('socket capture failed');
+    };
+
+    expect(socket.send('ping')).toBe('sent:1');
+    expect(source.sent).toEqual(['ping']);
+    expect(captured).toEqual([{ message: 'socket capture failed', type: 'input' }]);
+  });
 });
 
 type SocketListener = (...args: unknown[]) => void;

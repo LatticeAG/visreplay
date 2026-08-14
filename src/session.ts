@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { basename, dirname, join } from 'node:path';
 import { TextDecoder } from 'node:util';
+import { writeTextAtomically } from './atomic-write';
 import {
   cloneJsonSafe,
   compileRedactionConfig,
@@ -15,6 +15,7 @@ import {
   isEventType,
   isIsoUtcTimestamp,
   isRecord,
+  isDecisionVisreplay,
   NewSessionEvent,
   RedactionOptions,
   RedactionPattern,
@@ -109,6 +110,17 @@ export class Session {
   }
 
   /**
+   * Marks the logical end of a run once. Later events may still be appended;
+   * `endedAt` stays the first end time. `save()` does not call this.
+   */
+  public end(): SessionData {
+    if (this.sessionData.endedAt === undefined) {
+      this.sessionData.endedAt = new Date().toISOString();
+    }
+    return this.getData();
+  }
+
+  /**
    * Saves the current session as one portable UTF-8 JSON document. The target
    * is replaced atomically only after the temporary file has been written.
    */
@@ -117,7 +129,11 @@ export class Session {
     // JSON.stringify is synchronous and does not mutate its input, so this
     // preserves a point-in-time snapshot without first duplicating a very
     // large in-memory recording.
-    await writeJsonAtomically(filePath, this.sessionData);
+    try {
+      await writeTextAtomically(filePath, `${JSON.stringify(this.sessionData, null, 2)}\n`);
+    } catch (error) {
+      throw new Error(`Unable to save session to "${filePath}": ${errorMessage(error)}`);
+    }
   }
 
   /** Creates a stable summary and timeline without mutating the session. */
@@ -149,6 +165,19 @@ export class Session {
       };
     });
 
+    const decisions = session.events.flatMap((event) => {
+      const visreplay = event.metadata === undefined ? undefined : event.metadata.visreplay;
+      if (event.type !== 'reasoning' || !isDecisionVisreplay(visreplay)) {
+        return [];
+      }
+      return [{
+        index: event.index,
+        timestamp: event.timestamp,
+        preview: createPreview(event),
+        decision: visreplay
+      }];
+    });
+
     const debugExport: DebugExport = {
       $schema: DEBUG_EXPORT_SCHEMA,
       session: {
@@ -162,10 +191,12 @@ export class Session {
         eventCount: session.events.length,
         eventCounts,
         errorCount,
+        decisionCount: decisions.length,
         ...(firstError === undefined ? {} : { firstError })
       },
       timeline,
-      events: session.events
+      events: session.events,
+      decisions
     };
 
     return cloneJsonSafe(debugExport);
@@ -573,21 +604,6 @@ function stringifyPreviewValue(value: unknown): string {
 
 function truncate(value: string, limit: number = 160): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
-}
-
-async function writeJsonAtomically(filePath: string, value: unknown): Promise<void> {
-  const directory = dirname(filePath);
-  const temporaryPath = join(directory, `.${basename(filePath)}.${randomUUID()}.tmp`);
-  const contents = `${JSON.stringify(value, null, 2)}\n`;
-
-  try {
-    await fs.mkdir(directory, { recursive: true });
-    await fs.writeFile(temporaryPath, contents, { encoding: 'utf-8', mode: 0o600 });
-    await fs.rename(temporaryPath, filePath);
-  } catch (error) {
-    await fs.unlink(temporaryPath).catch(() => undefined);
-    throw new Error(`Unable to save session to "${filePath}": ${errorMessage(error)}`);
-  }
 }
 
 function assertFilePath(filePath: unknown): asserts filePath is string {

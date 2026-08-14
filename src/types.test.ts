@@ -4,6 +4,7 @@ import {
   cloneJsonSafe,
   compileRedactionPatterns,
   DEBUG_EXPORT_SCHEMA,
+  DECISION_SCHEMA,
   isEventType,
   isIsoUtcTimestamp,
   isSessionData,
@@ -121,6 +122,10 @@ describe('shared VisReplay types and value helpers', () => {
     expect(isSessionData(session)).toBe(true);
     expect(isSessionData({ ...session, events: [{ ...event, index: 1 }] })).toBe(false);
     expect(DEBUG_EXPORT_SCHEMA).toBe('visreplay/debug/1.0');
+  });
+
+  it('exposes the decision ledger schema constant', () => {
+    expect(DECISION_SCHEMA).toBe('visreplay/decision/1.0');
   });
 
   it('rejects events that omit a payload required by their event type', () => {

@@ -284,6 +284,124 @@ describe('VisReplay recorder', () => {
     expect(() => recorder.log({ type: 'future_event', content: 'nope' } as never))
       .toThrow('Unknown event type');
   });
+
+  it('marks endedAt once and still appends later log events', async () => {
+    const directory = await createTemporaryDirectory();
+    const filePath = join(directory, 'ended.vrs');
+    const recorder = new VisReplay({ sessionName: 'ended-recorder', agentType: 'test' });
+    recorder.log({ type: 'input', content: 'start' });
+    const first = recorder.end();
+    recorder.log({ type: 'output', content: 'after-end' });
+    const second = recorder.end();
+    await recorder.save(filePath);
+
+    expect(second.endedAt).toBe(first.endedAt);
+    expect(recorder.getEvents()).toHaveLength(2);
+    const loaded = await VisReplay.load(filePath);
+    expect(loaded.getSession().endedAt).toBe(first.endedAt);
+  });
+
+  it('returns wrapped method values when capture fails and reports the error', () => {
+    const captured: Array<{ error: unknown; type: string }> = [];
+    const recorder = new VisReplay({
+      sessionName: 'capture-hook',
+      onCaptureError(error, event) {
+        captured.push({ error, type: event.type });
+      }
+    });
+    const session = (recorder as unknown as { session: { addEvent: (event: unknown) => unknown } }).session;
+    session.addEvent = () => {
+      throw new Error('capture failed');
+    };
+    const wrapped = recorder.wrap({
+      run(value: string): string {
+        return `ok:${value}`;
+      }
+    });
+
+    expect(wrapped.run('deploy')).toBe('ok:deploy');
+    expect(captured).toEqual([
+      { error: expect.objectContaining({ message: 'capture failed' }), type: 'input' },
+      { error: expect.objectContaining({ message: 'capture failed' }), type: 'output' }
+    ]);
+    expect(recorder.getEvents()).toEqual([]);
+  });
+
+  it('swallows a throwing onCaptureError callback so wrap still returns', () => {
+    const recorder = new VisReplay({
+      onCaptureError() {
+        throw new Error('observer exploded');
+      }
+    });
+    const session = (recorder as unknown as { session: { addEvent: (event: unknown) => unknown } }).session;
+    session.addEvent = () => {
+      throw new Error('capture failed');
+    };
+    const wrapped = recorder.wrap({
+      ping(): number {
+        return 7;
+      }
+    });
+
+    expect(wrapped.ping()).toBe(7);
+  });
+
+  it('records a decision as reasoning with visreplay decision metadata', () => {
+    const recorder = new VisReplay({ sessionName: 'decision' });
+    recorder.log({ type: 'input', content: 'deploy' });
+    const event = recorder.recordDecision({
+      believed: { tests: 'green' },
+      assumed: { staging: 'isolated' },
+      relatedEventIndex: 0,
+      summary: 'ship it'
+    });
+
+    expect(event.type).toBe('reasoning');
+    expect(event.content).toBe('ship it');
+    expect(event.metadata).toMatchObject({
+      visreplay: {
+        schema: 'visreplay/decision/1.0',
+        kind: 'decision',
+        believed: { tests: 'green' },
+        relatedEventIndex: 0
+      }
+    });
+    expect(recorder.getSession().$schema).toBe('visreplay/session/1.0');
+  });
+
+  it('redacts secret keys inside believed before getEvents', () => {
+    const recorder = new VisReplay();
+    recorder.recordDecision({
+      believed: { token: 'super-secret', status: 'green' }
+    });
+
+    expect(recorder.getEvents()[0].metadata).toMatchObject({
+      visreplay: {
+        kind: 'decision',
+        believed: { token: '[REDACTED]', status: 'green' }
+      }
+    });
+  });
+
+  it('rejects decision confidence outside 0 to 1', () => {
+    const recorder = new VisReplay();
+    expect(() => recorder.recordDecision({ believed: { ok: true }, confidence: 1.5 }))
+      .toThrow('Decision confidence must be a finite number between 0 and 1');
+  });
+
+  it('rejects reserved metadata.visreplay on recordDecision', () => {
+    const recorder = new VisReplay();
+    expect(() => recorder.recordDecision({
+      believed: { ok: true },
+      metadata: { visreplay: { kind: 'nope' } }
+    })).toThrow('metadata.visreplay is reserved for VisReplay');
+  });
+
+  it('rejects relatedEventIndex outside the current session bounds', () => {
+    const recorder = new VisReplay();
+    expect(() => recorder.recordDecision({ believed: { ok: true }, relatedEventIndex: 0 }))
+      .toThrow('relatedEventIndex 0 is outside the session bounds');
+  });
 });
 
 async function createTemporaryDirectory(): Promise<string> {

@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,6 +27,7 @@ describe('public package exports', () => {
   it('exports the stable v1 schemas and event type constants', () => {
     expect(visreplay.SESSION_SCHEMA).toBe('visreplay/session/1.0');
     expect(visreplay.DEBUG_EXPORT_SCHEMA).toBe('visreplay/debug/1.0');
+    expect(visreplay.DECISION_SCHEMA).toBe('visreplay/decision/1.0');
     expect(visreplay.EVENT_TYPES).toEqual([
       'input',
       'reasoning',
@@ -87,10 +89,28 @@ describe('public package exports', () => {
     expect(visreplay.renderDebugViewer).toBeTypeOf('function');
     expect(visreplay.renderHtmlTimeline).toBeTypeOf('function');
     expect(visreplay.renderMarkdownReport).toBeTypeOf('function');
+    expect(visreplay.writeTextAtomically).toBeTypeOf('function');
 
     const session = new visreplay.Session('barrel-comparison', 'test');
     session.addEvent({ type: 'input', content: 'same' });
     expect(visreplay.compareSessions(session.getData(), session.getData()).equal).toBe(true);
     expect(visreplay.renderMarkdownReport(session.exportDebug())).toContain('# VisReplay Debug Report');
+  });
+
+  it('does not import the CLI module from the public barrel', () => {
+    const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+    expect(source).not.toMatch(/from ['"]\.\/cli['"]/);
+  });
+
+  it('exports interop helpers from the public barrel', () => {
+    expect(visreplay.exportInterop).toBeTypeOf('function');
+    expect(visreplay.renderInterop).toBeTypeOf('function');
+
+    const recorder = new visreplay.VisReplay({ sessionName: 'barrel-interop', agentType: 'test' });
+    recorder.log({ type: 'input', content: 'inspect interop' });
+    const result = visreplay.exportInterop(recorder.getSession(), 'otlp');
+
+    expect(result.$schema).toBe('visreplay/interop/1.0');
+    expect(JSON.stringify(result.document)).toContain('resourceSpans');
   });
 });

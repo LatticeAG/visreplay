@@ -14,6 +14,7 @@ import {
   writeDebugExport
 } from './cli';
 import { Session } from './session';
+import { SessionData } from './types';
 
 const temporaryDirectories: string[] = [];
 
@@ -28,6 +29,14 @@ describe('visreplay CLI', () => {
     expect(program.name()).toBe('visreplay');
     expect(program.commands.map((command) => command.name())).toEqual(['replay', 'export', 'debug', 'compare']);
     expect(program.description()).toContain('LatticeAG VisReplay');
+  });
+
+  it('reports the package.json version', () => {
+    const pkg = require('../package.json') as { version: string };
+    const program = createProgram({ io: createMemoryIO() });
+
+    expect(program.version()).toBe(pkg.version);
+    expect(program.version()).toBe('1.1.0');
   });
 
   it('replays a saved session automatically through the CLI', async () => {
@@ -90,7 +99,7 @@ describe('visreplay CLI', () => {
     const markdown = await readFile(markdownPath, 'utf8');
     expect(markdown).toContain('# VisReplay Debug Report');
     expect(markdown).toContain('| Events | 2 |');
-    expect(markdown).toContain('### Event 1 — `output`');
+    expect(markdown).toContain('### Event 1: `output`');
     expect(markdownIO.stdout()).toBe(`Exported Markdown report to ${markdownPath}\n`);
 
     const htmlIO = createMemoryIO();
@@ -155,6 +164,46 @@ describe('visreplay CLI', () => {
     await expect(runCli(['export', 'session.vrs', '--format', 'pdf'], { io }))
       .rejects.toThrow('format must be one of');
     expect(io.stderr()).toContain('format must be one of');
+  });
+
+  it('exports OTLP JSON to stdout with resourceSpans', async () => {
+    const io = createMemoryIO();
+    let debugLoads = 0;
+    let sessionLoads = 0;
+    const session: SessionData = {
+      $schema: 'visreplay/session/1.0',
+      sessionId: 'ses_cli_otlp',
+      sessionName: 'otlp-cli',
+      agentType: 'test-agent',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      events: [
+        {
+          eventId: 'evt_0',
+          index: 0,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          type: 'input',
+          method: 'run',
+          content: 'deploy'
+        }
+      ]
+    };
+
+    await runCli(['export', 'session.vrs', '--format', 'otlp'], {
+      io,
+      loadDebugSource: async () => {
+        debugLoads += 1;
+        return { exportDebug: () => ({}) };
+      },
+      loadSessionSource: async () => {
+        sessionLoads += 1;
+        return { getSession: () => session };
+      }
+    });
+
+    expect(sessionLoads).toBe(1);
+    expect(debugLoads).toBe(0);
+    expect(JSON.parse(io.stdout()).resourceSpans).toBeDefined();
+    expect(io.stderr()).toBe('');
   });
 
   it('compares two recordings through the CLI and supports a compact file export', async () => {
@@ -243,6 +292,26 @@ describe('visreplay CLI', () => {
 
   it('rejects an empty debug export path', async () => {
     await expect(writeDebugExport('   ', {})).rejects.toThrow('A debug export path is required');
+  });
+
+  it('rejects oversized session files through --max-file-bytes', async () => {
+    const filePath = await createSessionFile();
+    const io = createMemoryIO();
+
+    await expect(runCli(['export', filePath, '--max-file-bytes', '8'], { io }))
+      .rejects.toThrow('exceeds the 8-byte limit');
+  });
+
+  it('accepts --max-file-bytes 0 and rejects negative load limits', async () => {
+    const io = createMemoryIO();
+    await expect(runCli(['replay', 'session.vrs', '--max-file-bytes', '-1'], { io }))
+      .rejects.toThrow('max-file-bytes must be a non-negative safe integer');
+    expect(io.stderr()).toContain('max-file-bytes must be a non-negative safe integer');
+
+    const filePath = await createSessionFile();
+    const zeroIO = createMemoryIO();
+    await expect(runCli(['export', filePath, '--max-file-bytes', '0'], { io: zeroIO }))
+      .rejects.toThrow('exceeds the 0-byte limit');
   });
 });
 

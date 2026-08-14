@@ -6,6 +6,7 @@
 
 export const SESSION_SCHEMA = 'visreplay/session/1.0' as const;
 export const DEBUG_EXPORT_SCHEMA = 'visreplay/debug/1.0' as const;
+export const DECISION_SCHEMA = 'visreplay/decision/1.0' as const;
 
 export const EVENT_TYPES = [
   'input',
@@ -94,6 +95,12 @@ export interface VisReplayOptions extends RedactionOptions {
   sessionId?: string;
   sessionName?: string;
   agentType?: string;
+  /**
+   * Called when wrapping or WebSocket observation fails to record an event.
+   * The callback is itself isolated: a throw cannot change agent or socket
+   * behavior.
+   */
+  onCaptureError?: (error: unknown, event: NewSessionEvent) => void;
 }
 
 /** @deprecated Use VisReplayOptions. */
@@ -115,6 +122,7 @@ export interface DebugExport {
     eventCount: number;
     eventCounts: Record<EventType, number>;
     errorCount: number;
+    decisionCount: number;
     firstError?: {
       index: number;
       message: string;
@@ -122,6 +130,37 @@ export interface DebugExport {
   };
   timeline: DebugTimelineEvent[];
   events: SessionEvent[];
+  decisions: Array<{
+    index: number;
+    timestamp: string;
+    preview: string;
+    decision: DecisionRecord;
+  }>;
+}
+
+export interface DecisionRecord {
+  schema: typeof DECISION_SCHEMA;
+  kind: 'decision';
+  believed: JsonValue;
+  assumed?: JsonValue;
+  overweighted?: JsonValue;
+  ignored?: JsonValue;
+  alternatives?: JsonValue;
+  confidence?: number;
+  relatedEventIndex?: number;
+  summary?: string;
+}
+
+export interface DecisionInput {
+  believed: unknown;
+  assumed?: unknown;
+  overweighted?: unknown;
+  ignored?: unknown;
+  alternatives?: unknown;
+  confidence?: number;
+  relatedEventIndex?: number;
+  summary?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /** Default secret-like keys used by VisReplay unless callers override them. */
@@ -155,6 +194,13 @@ export function isEventType(value: unknown): value is EventType {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** True when metadata.visreplay is a decision ledger record. */
+export function isDecisionVisreplay(value: unknown): value is DecisionRecord {
+  return isRecord(value)
+    && value.kind === 'decision'
+    && value.schema === DECISION_SCHEMA;
 }
 
 export function isIsoUtcTimestamp(value: unknown): value is string {

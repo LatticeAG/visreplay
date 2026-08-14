@@ -136,6 +136,46 @@ describe('compareSessions', () => {
       summary: { unchanged: 1, changed: 0, added: 0, removed: 0 }
     });
   });
+
+  it('treats two empty recordings as equal', () => {
+    const empty = createSessionData({ events: [] });
+    const comparison = compareSessions(empty, empty);
+
+    expect(comparison.equal).toBe(true);
+    expect(comparison.summary).toMatchObject({
+      baselineEventCount: 0,
+      candidateEventCount: 0,
+      unchanged: 0,
+      changed: 0,
+      added: 0,
+      removed: 0
+    });
+    expect(comparison.events).toEqual([]);
+  });
+
+  it('omits unchanged event pairs when includeUnchanged is false', () => {
+    const baseline = createSessionData();
+    const comparison = compareSessions(baseline, baseline, { includeUnchanged: false });
+
+    expect(comparison.equal).toBe(true);
+    expect(comparison.summary.unchanged).toBe(2);
+    expect(comparison.events).toEqual([]);
+  });
+
+  it('is aliased as diffSessions and rejects oversized files through compareSessionFiles', async () => {
+    expect(diffSessions).toBe(compareSessions);
+
+    const directory = await mkdtemp(join(tmpdir(), 'visreplay-diff-limit-'));
+    temporaryDirectories.push(directory);
+    const baselinePath = join(directory, 'baseline.vrs');
+    const candidatePath = join(directory, 'candidate.vrs');
+    const session = new Session('limit-comparison', 'test-agent');
+    session.addEvent({ type: 'input', content: 'deploy' });
+    await Promise.all([session.save(baselinePath), session.save(candidatePath)]);
+
+    await expect(compareSessionFiles(baselinePath, candidatePath, { maxFileBytes: 8 }))
+      .rejects.toThrow('exceeds the 8-byte limit');
+  });
 });
 
 interface SessionDataOverrides {

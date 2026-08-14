@@ -1,4 +1,4 @@
-import { Session } from './session';
+import { Session, SessionLoadOptions } from './session';
 import { cloneJsonSafe, isSessionData, SessionData, SessionEvent } from './types';
 
 /** The relationship between one baseline event and one candidate event. */
@@ -66,6 +66,12 @@ export interface SessionComparisonOptions {
   compareTimestamps?: boolean;
   /** Compare generated session and event IDs. Defaults to false. */
   compareIdentifiers?: boolean;
+}
+
+/** File-load limits plus comparison options for `compareSessionFiles`. */
+export interface SessionFileComparisonOptions extends SessionComparisonOptions {
+  maxFileBytes?: number;
+  maxEvents?: number;
 }
 
 /** @deprecated Use SessionComparisonOptions. */
@@ -197,14 +203,19 @@ export const diffSessions = compareSessions;
 export async function compareSessionFiles(
   baselineFilePath: string,
   candidateFilePath: string,
-  options: SessionComparisonOptions = {}
+  options: SessionFileComparisonOptions = {}
 ): Promise<SessionComparison> {
+  const loadOptions: SessionLoadOptions = {
+    ...(options.maxFileBytes === undefined ? {} : { maxFileBytes: options.maxFileBytes }),
+    ...(options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents })
+  };
   const [baseline, candidate] = await Promise.all([
-    Session.load(baselineFilePath),
-    Session.load(candidateFilePath)
+    Session.load(baselineFilePath, loadOptions),
+    Session.load(candidateFilePath, loadOptions)
   ]);
+  const { maxFileBytes: _maxFileBytes, maxEvents: _maxEvents, ...comparisonOptions } = options;
 
-  return compareSessions(baseline, candidate, options);
+  return compareSessions(baseline, candidate, comparisonOptions);
 }
 
 /** A concise alias for consumers that prefer diff-oriented terminology. */
