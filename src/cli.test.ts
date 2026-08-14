@@ -36,7 +36,6 @@ describe('visreplay CLI', () => {
     const program = createProgram({ io: createMemoryIO() });
 
     expect(program.version()).toBe(pkg.version);
-    expect(program.version()).toBe('1.1.0');
   });
 
   it('replays a saved session automatically through the CLI', async () => {
