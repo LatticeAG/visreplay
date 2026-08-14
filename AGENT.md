@@ -16,12 +16,9 @@ structured debug report. It never makes network requests.
 
 ## Source of truth
 
-[`SPEC-EXTREME.md`](./SPEC-EXTREME.md) is the locked implementation contract
-for the 1.1.0 cycle. Agents receive it as pasted context because `*SPEC*.md`
-is gitignored. [`BUILD-SPEC.md`](./BUILD-SPEC.md) remains the historical v1
-contract; its D1-D13 safety bullets still apply. [`SPEC.md`](./SPEC.md) and
-[`SPEC-DeepDebug.md`](./SPEC-DeepDebug.md) describe future product directions.
-Do not represent a future feature as working functionality.
+[`README.md`](./README.md) is the public product contract. Internal design
+documents are deliberately not part of this repository. Do not represent a
+future feature as working functionality.
 
 ## v1.1 scope
 
