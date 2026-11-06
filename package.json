@@ -21,7 +21,9 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
-    "check": "tsc --noEmit && vitest run"
+    "check": "tsc --noEmit && vitest run",
+    "example:full": "tsx examples/full-workflow.ts",
+    "example:basic": "tsx examples/basic-usage.ts"
   },
   "author": "LatticeAG",
   "license": "MIT",

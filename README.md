@@ -163,6 +163,9 @@ index-aligned, and report unchanged, changed, added, and removed events.
 
 `examples/full-workflow.ts` is an end-to-end example that records a session,
 saves it, auto-replays it, and writes Markdown and HTML exports.
+After `npm ci`, run it with `npm run example:full`; run the smaller recording
+example with `npm run example:basic`. These write `visreplay-demo/` and
+`deploy-staging.vrs`, respectively, under the current directory.
 
 ## Interop export
 
