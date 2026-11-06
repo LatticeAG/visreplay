@@ -160,6 +160,12 @@ inspection, and incremental rendering for large sessions.
 Use `compareSessions()` for two in-memory session documents or
 `compareSessionFiles()` for recordings on disk. Comparisons are deterministic,
 index-aligned, and report unchanged, changed, added, and removed events.
+Each position is compared with the same position in the other recording;
+events are not matched by meaning or shifted to account for insertions. For
+example, the full and basic examples start with different event types, so all
+five overlapping positions can be `changed`, with one `removed`. Inspect the
+per-event `changes` for the fields responsible. Generated IDs and timestamps
+are ignored by default, but `--identifiers` and `--timestamps` include them.
 
 `examples/full-workflow.ts` is an end-to-end example that records a session,
 saves it, auto-replays it, and writes Markdown and HTML exports.
