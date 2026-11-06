@@ -23,7 +23,8 @@
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run",
     "example:full": "tsx examples/full-workflow.ts",
-    "example:basic": "tsx examples/basic-usage.ts"
+    "example:basic": "tsx examples/basic-usage.ts",
+    "smoke:cli": "npm run build && node scripts/smoke-cli.cjs"
   },
   "author": "LatticeAG",
   "license": "MIT",

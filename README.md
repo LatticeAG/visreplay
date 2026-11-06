@@ -270,10 +270,14 @@ npm ci
 npm run check
 npm run build
 node dist/cli.js --help
+npm run smoke:cli
 ```
 
 The test suite uses Vitest. `npm run check` performs strict TypeScript type
 checking and runs all tests.
+`npm run smoke:cli` builds the package, records a temporary session, and
+checks the built CLI's auto replay and JSON export. It removes its temporary
+files afterward.
 
 ## License
 
