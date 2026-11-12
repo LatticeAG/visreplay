@@ -160,9 +160,18 @@ inspection, and incremental rendering for large sessions.
 Use `compareSessions()` for two in-memory session documents or
 `compareSessionFiles()` for recordings on disk. Comparisons are deterministic,
 index-aligned, and report unchanged, changed, added, and removed events.
+Each position is compared with the same position in the other recording;
+events are not matched by meaning or shifted to account for insertions. For
+example, the full and basic examples start with different event types, so all
+five overlapping positions can be `changed`, with one `removed`. Inspect the
+per-event `changes` for the fields responsible. Generated IDs and timestamps
+are ignored by default, but `--identifiers` and `--timestamps` include them.
 
 `examples/full-workflow.ts` is an end-to-end example that records a session,
 saves it, auto-replays it, and writes Markdown and HTML exports.
+After `npm ci`, run it with `npm run example:full`; run the smaller recording
+example with `npm run example:basic`. These write `visreplay-demo/` and
+`deploy-staging.vrs`, respectively, under the current directory.
 
 ## Interop export
 
@@ -261,10 +270,14 @@ npm ci
 npm run check
 npm run build
 node dist/cli.js --help
+npm run smoke:cli
 ```
 
 The test suite uses Vitest. `npm run check` performs strict TypeScript type
 checking and runs all tests.
+`npm run smoke:cli` builds the package, records a temporary session, and
+checks the built CLI's auto replay and JSON export. It removes its temporary
+files afterward.
 
 ## License
 
